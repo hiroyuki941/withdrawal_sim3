@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>取り崩しシミュレーター (前月比で条件付き売却)</title>
+  <style>
+    :root {
+      --bg: #0c111a;
+      --panel: rgba(255, 255, 255, 0.04);
+      --panel-strong: rgba(255, 255, 255, 0.07);
+      --accent: #7be0ad;
+      --accent-2: #f7c266;
+      --text: #e9eef5;
+      --muted: #9fb3c8;
+      --danger: #f38ba8;
+      --sans: "Bahnschrift", "Avenir Next", "Noto Sans JP", "Helvetica", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 26px 14px 60px;
+      background:
+        radial-gradient(circle at 18% 20%, rgba(123, 224, 173, 0.08), transparent 32%),
+        radial-gradient(circle at 82% 10%, rgba(247, 194, 102, 0.10), transparent 36%),
+        linear-gradient(135deg, #0b1420, #0f1c2d 55%, #0b1420);
+      color: var(--text);
+      font-family: var(--sans);
+    }
+    .shell {
+      width: min(1140px, 100%);
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 18px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(8px);
+      padding: 22px 22px 28px;
+    }
+    header { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+    h1 { margin: 0; font-size: 1.2rem; letter-spacing: 0.04em; color: var(--accent); }
+    .meta { color: var(--muted); font-size: 0.95rem; }
+    .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 12px; }
+    label { display: block; font-size: 0.88rem; color: var(--muted); margin-bottom: 6px; }
+    input[type="number"], input[type="file"], input[type="month"] {
+      width: 100%; padding: 10px 12px; border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.06); color: var(--text); font-size: 0.95rem;
+    }
+    input[type="file"] { padding: 8px 10px; }
+    button {
+      border: none; border-radius: 12px; padding: 12px 16px;
+      background: linear-gradient(135deg, var(--accent), #5bc99d); color: #0a111a; font-weight: 700;
+      cursor: pointer; box-shadow: 0 10px 30px rgba(123, 224, 173, 0.35);
+      transition: transform 0.15s ease, box-shadow 0.2s ease;
+    }
+    button:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
+    button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 12px 32px rgba(123, 224, 173, 0.45); }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 6px 0 12px; }
+    .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 14px; }
+    .card { padding: 14px; border-radius: 14px; background: var(--panel-strong); border: 1px solid rgba(255, 255, 255, 0.06); }
+    .label { font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
+    .value { font-size: 1.1rem; font-weight: 700; letter-spacing: 0.02em; }
+    .value.negative { color: var(--danger); }
+    .value.positive { color: var(--accent); }
+    .table-wrap { border-radius: 14px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.07); background: rgba(255, 255, 255, 0.02); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; min-width: 720px; }
+    th, td { padding: 10px 12px; text-align: right; border-bottom: 1px solid rgba(255, 255, 255, 0.05); white-space: nowrap; }
+    th { background: rgba(255, 255, 255, 0.04); text-align: right; font-weight: 700; color: var(--muted); position: sticky; top: 0; backdrop-filter: blur(6px); }
+    td:first-child, th:first-child { text-align: left; }
+    tbody tr:nth-child(even) { background: rgba(255, 255, 255, 0.02); }
+    .hint { color: var(--muted); font-size: 0.88rem; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <h1>取り崩しシミュレーター (前月比で条件付き売却)</h1>
+      <div class="meta">前月比が一定以上なら指定率で売却します（例: 前月比2%超→1.5%売却）</div>
+    </header>
+
+    <div class="controls">
+      <div>
+        <label for="startAsset">取り崩し開始 資産評価額 (万円)</label>
+        <input type="number" id="startAsset" value="3000" step="10" min="0">
+      </div>
+      <div>
+        <label for="monthlySpend">毎月使用予定額 (円)</label>
+        <input type="number" id="monthlySpend" value="200000" step="5000" min="0">
+      </div>
+      <div>
+        <label for="startMonth">シミュレーション開始 (月)</label>
+        <input type="month" id="startMonth" placeholder="2010-01">
+      </div>
+      <div>
+        <label for="endMonth">シミュレーション終了 (月)</label>
+        <input type="month" id="endMonth" placeholder="2020-12">
+      </div>
+      <div>
+        <label for="csvFile">月次CSV (Date, QLD/QQQ/SPY/Close[, USDJPY])</label>
+        <input type="file" id="csvFile" accept=".csv,text/csv">
+        <div class="hint">例: qld_monthly_close.csv / qqq_monthly_close.csv / spy_monthly_close.csv</div>
+      </div>
+      <div>
+        <label>為替</label>
+        <div class="hint">USDJPY列があれば掛け合わせて円換算（無ければ価格列のみ）</div>
+        <input type="checkbox" id="useFx" checked> 為替を適用する
+      </div>
+      <div>
+        <label>条件付き売却設定</label>
+        <div class="hint">前月比が閾値を超えた月のみ、指定の売却率を適用します</div>
+        <input type="number" id="triggerPct" value="2.0" step="0.1" min="0" style="width: 48%; margin-right:4%;"> %
+        <input type="number" id="triggerSellPct" value="1.5" step="0.1" min="0" max="100" style="width: 48%;"> % で売却
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="runBtn" disabled>シミュレーションを実行</button>
+      <button id="downloadBtn" disabled style="background: linear-gradient(135deg, var(--accent-2), #f3b04d); color:#0a111a;">結果をCSVで保存</button>
+      <div class="meta" id="status">CSVを選択してください</div>
+    </div>
+
+    <div class="summary" id="summaryCards">
+      <div class="card">
+        <div class="label">平均月売却額</div>
+        <div class="value" id="avgSell">-</div>
+      </div>
+      <div class="card">
+        <div class="label">売却後評価額 (最終)</div>
+        <div class="value" id="finalAsset">-</div>
+      </div>
+      <div class="card">
+        <div class="label">売却後評価額 (最小)</div>
+        <div class="value" id="minAsset">-</div>
+      </div>
+      <div class="card">
+        <div class="label">貯蓄 / 借入累計</div>
+        <div class="value" id="cashCumulative">-</div>
+      </div>
+      <div class="card">
+        <div class="label">最大借入額</div>
+        <div class="value" id="maxDebt">-</div>
+      </div>
+      <div class="card">
+        <div class="label">データ期間</div>
+        <div class="value" id="period">-</div>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <div style="overflow:auto; max-height: 60vh;">
+        <table id="resultTable">
+          <thead>
+            <tr>
+              <th>日付</th>
+              <th>前月比</th>
+              <th>資産評価額</th>
+              <th>月売却率</th>
+              <th>月売却額</th>
+              <th>月使用額</th>
+              <th>貯蓄/借入累計</th>
+              <th>売却後評価額</th>
+            </tr>
+          </thead>
+          <tbody id="resultBody">
+            <tr><td colspan="8" style="text-align:center; padding:18px; color: var(--muted);">CSVを読み込むと結果が表示されます</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById("csvFile");
+    const runBtn = document.getElementById("runBtn");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const statusEl = document.getElementById("status");
+    const useFx = document.getElementById("useFx");
+
+    let parsedData = [];
+    let lastResults = [];
+
+    const yen = (v) => isFinite(v) ? "¥" + Math.round(v).toLocaleString("ja-JP") : "-";
+    const pct = (v) => isFinite(v) ? (v * 100).toFixed(2) + "%" : "-";
+
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = reader.result.toString();
+        parsedData = parseCsv(text);
+        if (parsedData.length < 2) {
+          statusEl.textContent = "データが不足しています（最低2行必要）";
+          runBtn.disabled = true;
+          return;
+        }
+        statusEl.textContent = `読み込み完了: ${parsedData.length}行 (${fmtDate(parsedData[0].date)} 〜 ${fmtDate(parsedData.at(-1).date)})`;
+        runBtn.disabled = false;
+      };
+      reader.onerror = () => { statusEl.textContent = "CSV読込でエラーが発生しました"; };
+      reader.readAsText(file, "utf-8");
+    });
+
+    runBtn.addEventListener("click", () => {
+      if (!parsedData.length) return;
+      const startAsset = ((Number(document.getElementById("startAsset").value) || 0) * 10000); // 万円→円
+      const monthlySpend = Number(document.getElementById("monthlySpend").value) || 0;
+      const startMonth = document.getElementById("startMonth").value || null;
+      const endMonth = document.getElementById("endMonth").value || null;
+      const triggerPct = (Number(document.getElementById("triggerPct").value) || 0) / 100;
+      const triggerSell = (Number(document.getElementById("triggerSellPct").value) || 0) / 100;
+
+      const filtered = filterByRange(parsedData, startMonth, endMonth);
+      if (filtered.length < 2) {
+        statusEl.textContent = "指定期間のデータが不足しています（最低2行必要）";
+        render([]);
+        downloadBtn.disabled = true;
+        return;
+      }
+
+      lastResults = simulate(filtered, { startAsset, monthlySpend, useFx: useFx.checked, triggerPct, triggerSell });
+      render(lastResults);
+      downloadBtn.disabled = false;
+      statusEl.textContent = `計算完了: ${fmtDate(filtered[0].date)} 〜 ${fmtDate(filtered.at(-1).date)} (${filtered.length}行)`;
+    });
+
+    downloadBtn.addEventListener("click", () => {
+      if (!lastResults.length) return;
+      const header = ["Date","MonthlyReturn","AssetBeforeSell","SellRate","SellAmount","Spend","CashCumulative","AssetAfterSell"];
+      const rows = lastResults.map(r => [
+        fmtDate(r.date),
+        (r.return ?? 0).toFixed(4),
+        r.assetBefore,
+        r.sellRate,
+        r.sellAmount,
+        r.spend,
+        r.cashCum,
+        r.assetAfter
+      ]);
+      const csv = [header.join(","), ...rows.map(r => r.join(","))].join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "withdrawal_sim.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    function parseCsv(text) {
+      if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      if (!lines.length) return [];
+      const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
+      const idxDate = headers.indexOf("date");
+      const idxFx = headers.indexOf("usdjpy");
+      const pricePriority = ["qld", "qqq", "spy", "adj close", "close", "price"];
+      let idxPrice = pricePriority.map(h => headers.indexOf(h)).find(i => i !== -1);
+      if (idxPrice === -1) {
+        idxPrice = headers.findIndex((_, i) => i !== idxDate && i !== idxFx);
+      }
+      if (idxDate === -1 || idxPrice === -1) return [];
+
+      const parseDate = (s) => {
+        const parts = s.replace(/[-.]/g, "/").split("/").map(p => p.trim()).filter(Boolean);
+        if (parts.length === 3) {
+          const [y, m, d] = parts;
+          const iso = `${y.padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+          const dt = new Date(iso + "T00:00:00Z");
+          return Number.isNaN(dt.getTime()) ? null : dt;
+        }
+        const dt = new Date(s);
+        return Number.isNaN(dt.getTime()) ? null : dt;
+      };
+
+      const rows = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(",").map(c => c.trim());
+        if (!cols[idxDate] || !cols[idxPrice]) continue;
+        const d = parseDate(cols[idxDate]);
+        if (!d) continue;
+        const price = parseFloat(cols[idxPrice]);
+        const fx = idxFx !== -1 ? parseFloat(cols[idxFx]) : undefined;
+        if (!Number.isFinite(price)) continue;
+        rows.push({ date: d, price, fx: Number.isFinite(fx) ? fx : null });
+      }
+      rows.sort((a, b) => a.date - b.date);
+      return rows;
+    }
+
+    function filterByRange(data, startMonth, endMonth) {
+      if (!startMonth && !endMonth) return data;
+      const start = startMonth ? new Date(startMonth + "-01T00:00:00Z") : null;
+      const end = endMonth ? new Date(endMonth + "-01T00:00:00Z") : null;
+      const filtered = data.filter(row => {
+        const okStart = start ? row.date >= start : true;
+        const okEnd = end ? row.date <= endOfMonth(end) : true;
+        return okStart && okEnd;
+      });
+      if (start && filtered.length) {
+        const first = filtered[0];
+        if (!(first.date.getUTCFullYear() === start.getUTCFullYear() && first.date.getUTCMonth() === start.getUTCMonth())) {
+          const clone = { ...first, date: start };
+          filtered.unshift(clone);
+        }
+      }
+      return filtered;
+    }
+
+    function endOfMonth(d) {
+      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0));
+    }
+
+    function simulate(data, { startAsset, monthlySpend, useFx, triggerPct, triggerSell }) {
+      if (data.length < 1) return [];
+      let asset = startAsset;
+      const fxOn = useFx && data.some(d => d.fx !== null);
+      const results = [];
+      const unitPrice = (row) => row.price * (fxOn ? (row.fx ?? 1) : 1);
+
+      for (let i = 0; i < data.length; i++) {
+        const prev = data[i - 1];
+        const cur = data[i];
+        const ret = i === 0 || unitPrice(prev) === 0 ? 0 : (unitPrice(cur) / unitPrice(prev)) - 1;
+        if (i > 0) asset *= 1 + ret;
+
+        const rate = ret > triggerPct ? triggerSell : 0;
+        const sellAmount = asset * rate;
+        asset -= sellAmount;
+        const cashFlow = sellAmount - monthlySpend;
+        const cashCum = (results.at(-1)?.cashCum || 0) + cashFlow;
+
+        results.push({
+          date: cur.date,
+          return: ret,
+          assetBefore: asset + sellAmount,
+          sellRate: rate,
+          sellAmount,
+          spend: monthlySpend,
+          cashCum,
+          assetAfter: asset
+        });
+        if (asset < 0) asset = 0;
+      }
+      return results;
+    }
+
+    function render(rows) {
+      const body = document.getElementById("resultBody");
+      if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:18px; color: var(--muted);">シミュレーション結果なし</td></tr>';
+        document.getElementById("avgSell").textContent = "-";
+        document.getElementById("finalAsset").textContent = "-";
+        document.getElementById("minAsset").textContent = "-";
+        document.getElementById("cashCumulative").textContent = "-";
+        document.getElementById("maxDebt").textContent = "-";
+        document.getElementById("period").textContent = "-";
+        return;
+      }
+      body.innerHTML = rows.map(r => `
+        <tr>
+          <td>${fmtDate(r.date)}</td>
+          <td>${pct(r.return)}</td>
+          <td>${yen(r.assetBefore)}</td>
+          <td>${(r.sellRate * 100).toFixed(2)}%</td>
+          <td>${yen(r.sellAmount)}</td>
+          <td>${yen(r.spend)}</td>
+          <td>${yen(r.cashCum)}</td>
+          <td>${yen(r.assetAfter)}</td>
+        </tr>
+      `).join("");
+
+      const avgSell = rows.reduce((s, r) => s + r.sellAmount, 0) / rows.length;
+      const finalAsset = rows.at(-1).assetAfter;
+      const minAsset = rows.reduce((m, r) => Math.min(m, r.assetAfter), Infinity);
+      const cashCum = rows.at(-1).cashCum;
+      const minCash = rows.reduce((m, r) => Math.min(m, r.cashCum), Infinity);
+      const maxDebt = Math.abs(minCash < 0 ? minCash : 0);
+      const start = fmtDate(rows[0].date);
+      const end = fmtDate(rows.at(-1).date);
+
+      const debtDisplay = maxDebt > 0 ? "-" + yen(maxDebt) : yen(maxDebt);
+      document.getElementById("avgSell").textContent = yen(avgSell);
+      document.getElementById("finalAsset").textContent = yen(finalAsset);
+      document.getElementById("finalAsset").className = "value " + (finalAsset >= 0 ? "positive" : "negative");
+      document.getElementById("minAsset").textContent = yen(minAsset);
+      document.getElementById("minAsset").className = "value " + (minAsset >= 0 ? "positive" : "negative");
+      document.getElementById("cashCumulative").textContent = yen(cashCum);
+      document.getElementById("cashCumulative").className = "value " + (cashCum >= 0 ? "positive" : "negative");
+      document.getElementById("maxDebt").textContent = debtDisplay;
+      document.getElementById("maxDebt").className = "value " + (maxDebt > 0 ? "negative" : "positive");
+      document.getElementById("period").textContent = `${start} 〜 ${end}`;
+    }
+
+    const fmtDate = (d) => {
+      if (!(d instanceof Date)) return "-";
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    };
+  </script>
+</body>
+</html>
