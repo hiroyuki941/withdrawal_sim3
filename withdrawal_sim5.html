@@ -90,6 +90,11 @@
         <input type="number" id="monthlySpend" value="200000" step="5000" min="0">
       </div>
       <div>
+        <label for="stopThreshold">取り崩し停止ライン (万円)</label>
+        <input type="number" id="stopThreshold" value="5000" step="100" min="0">
+        <div class="hint">この評価額を下回ったら取り崩し売却を停止します</div>
+      </div>
+      <div>
         <label for="startMonth">シミュレーション開始 (月)</label>
         <input type="month" id="startMonth" placeholder="2010-01">
       </div>
@@ -207,6 +212,7 @@
       if (!parsedData.length) return;
       const startAsset = ((Number(document.getElementById("startAsset").value) || 0) * 10000); // 万円→円
       const monthlySpend = Number(document.getElementById("monthlySpend").value) || 0;
+      const stopThreshold = ((Number(document.getElementById("stopThreshold").value) || 0) * 10000); // 万円→円
       const startMonth = document.getElementById("startMonth").value || null;
       const endMonth = document.getElementById("endMonth").value || null;
       const triggerPct = (Number(document.getElementById("triggerPct").value) || 0) / 100;
@@ -220,7 +226,7 @@
         return;
       }
 
-      lastResults = simulate(filtered, { startAsset, monthlySpend, useFx: useFx.checked, triggerPct, triggerSellAmount });
+      lastResults = simulate(filtered, { startAsset, monthlySpend, stopThreshold, useFx: useFx.checked, triggerPct, triggerSellAmount });
       render(lastResults);
       downloadBtn.disabled = false;
       statusEl.textContent = `計算完了: ${fmtDate(filtered[0].date)} 〜 ${fmtDate(filtered.at(-1).date)} (${filtered.length}行)`;
@@ -313,7 +319,7 @@
       return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0));
     }
 
-    function simulate(data, { startAsset, monthlySpend, useFx, triggerPct, triggerSellAmount }) {
+    function simulate(data, { startAsset, monthlySpend, stopThreshold, useFx, triggerPct, triggerSellAmount }) {
       if (data.length < 1) return [];
       let asset = startAsset;
       const fxOn = useFx && data.some(d => d.fx !== null);
@@ -327,7 +333,8 @@
         if (i > 0) asset *= 1 + ret;
 
         const assetBefore = asset;
-        const sellAmount = ret >= triggerPct ? Math.min(asset, triggerSellAmount) : 0;
+        const stop = stopThreshold > 0 && assetBefore <= stopThreshold;
+        const sellAmount = stop ? 0 : (ret >= triggerPct ? Math.min(asset, triggerSellAmount) : 0);
         asset -= sellAmount;
         const sellRate = assetBefore > 0 ? sellAmount / assetBefore : 0;
         const cashFlow = sellAmount - monthlySpend;
