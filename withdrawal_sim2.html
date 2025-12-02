@@ -301,7 +301,7 @@
       const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
       const idxDate = headers.indexOf("date");
       const idxFx = headers.indexOf("usdjpy");
-      const pricePriority = ["qld", "qqq", "spy", "adj close", "close", "price"];
+      const pricePriority = ["qld", "qqq", "tqqq", "tecl", "spy", "adj close", "close", "price"];
       let idxPrice = pricePriority.map(h => headers.indexOf(h)).find(i => i !== -1);
       if (idxPrice === -1) {
         // Date/FX以外で最初の列を価格列として採用
